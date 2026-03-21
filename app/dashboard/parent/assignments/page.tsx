@@ -50,8 +50,7 @@ export default async function ParentPage() {
       ) : (
         <div className="space-y-2">
           {list.slice(0, 6).map(a => (
-            <div
-              key={a.id}
+            <div key={`${a.student_id}-${a.date}`}
               className="flex items-center gap-3 p-2.5 mb-1.5 hover:bg-gray-50 rounded-xl"
             >
               <span
