@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import PageHeader from '@/components/shared/PageHeader'
-import { FileText } from 'lucide-react'
 import { formatDateTime } from '@/lib/utils'
 
 export default async function ParentPage() {
@@ -28,6 +27,7 @@ export default async function ParentPage() {
       ? await supabase
           .from('attendances')
           .select(`
+            id,
             student_id,
             date,
             status,
@@ -50,7 +50,7 @@ export default async function ParentPage() {
         <div className="space-y-2">
           {attendances?.slice(0, 6).map((a: any) => (
             <div
-              key={`${a.student_id}-${a.date}`}
+              key={a.id}
               className="flex items-center gap-3 p-2.5 mb-1.5 hover:bg-gray-50 rounded-xl"
             >
               <span
