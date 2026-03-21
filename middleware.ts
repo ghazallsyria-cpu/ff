@@ -2,6 +2,12 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { ROLE_REDIRECT } from '@/lib/utils'
 
+type CookieToSet = {
+  name: string
+  value: string
+  options?: any
+}
+
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
@@ -10,10 +16,16 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() { return request.cookies.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet: CookieToSet[]) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          )
+
           supabaseResponse = NextResponse.next({ request })
+
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           )
@@ -22,29 +34,34 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // ✅ استخدام getUser() الآمن بدلاً من getSession()
-  const { data: { user }, error } = await supabase.auth.getUser()
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser()
+
   const path = request.nextUrl.pathname
 
-  // المسارات العامة لا تحتاج مصادقة
   const publicPaths = ['/login', '/reset-password']
-  if (publicPaths.some(p => path.startsWith(p))) {
+
+  if (publicPaths.some((p) => path.startsWith(p))) {
     if (user && !error) {
-      // مستخدم مسجّل يحاول الوصول لصفحة تسجيل الدخول → وجّهه للوحته
       const { data: profile } = await supabase
         .from('users')
         .select('role, must_reset_password')
         .eq('id', user.id)
         .single()
+
       if (profile && !profile.must_reset_password) {
-        const redirect = ROLE_REDIRECT[profile.role] || '/dashboard'
+        const redirect =
+          ROLE_REDIRECT[profile.role] || '/dashboard'
+
         return NextResponse.redirect(new URL(redirect, request.url))
       }
     }
+
     return supabaseResponse
   }
 
-  // بقية المسارات تحتاج مصادقة
   if (!user || error) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
@@ -60,12 +77,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // إجبار تغيير كلمة المرور
-  if (profile.must_reset_password && !path.startsWith('/reset-password')) {
-    return NextResponse.redirect(new URL('/reset-password', request.url))
+  if (
+    profile.must_reset_password &&
+    !path.startsWith('/reset-password')
+  ) {
+    return NextResponse.redirect(
+      new URL('/reset-password', request.url)
+    )
   }
 
-  // ✅ توجيه مبني على الدور — يشمل management
   const roleRedirectMap: Record<string, string> = {
     admin: '/dashboard',
     management: '/dashboard/management',
@@ -76,21 +96,31 @@ export async function middleware(request: NextRequest) {
 
   const allowedPrefix = roleRedirectMap[profile.role]
 
-  if (path === '/' || path === '/dashboard' && profile.role !== 'admin') {
-    return NextResponse.redirect(new URL(allowedPrefix, request.url))
+  if (
+    path === '/' ||
+    (path === '/dashboard' && profile.role !== 'admin')
+  ) {
+    return NextResponse.redirect(
+      new URL(allowedPrefix, request.url)
+    )
   }
 
-  // منع الوصول لأقسام غير مصرح بها
   if (path.startsWith('/dashboard')) {
     const isAllowed =
-      (profile.role === 'admin') ||
-      (profile.role === 'management' && path.startsWith('/dashboard/management')) ||
-      (profile.role === 'teacher' && path.startsWith('/dashboard/teacher')) ||
-      (profile.role === 'student' && path.startsWith('/dashboard/student')) ||
-      (profile.role === 'parent' && path.startsWith('/dashboard/parent'))
+      profile.role === 'admin' ||
+      (profile.role === 'management' &&
+        path.startsWith('/dashboard/management')) ||
+      (profile.role === 'teacher' &&
+        path.startsWith('/dashboard/teacher')) ||
+      (profile.role === 'student' &&
+        path.startsWith('/dashboard/student')) ||
+      (profile.role === 'parent' &&
+        path.startsWith('/dashboard/parent'))
 
     if (!isAllowed) {
-      return NextResponse.redirect(new URL(allowedPrefix, request.url))
+      return NextResponse.redirect(
+        new URL(allowedPrefix, request.url)
+      )
     }
   }
 
@@ -98,5 +128,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 }
