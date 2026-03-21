@@ -14,7 +14,7 @@ export default async function ParentAssignmentsPage() {
     .select('id, section_id, users(full_name)')
     .eq('parent_id', user.id)
 
-  const sectionIds = [...new Set(children?.map(c => c.section_id).filter(Boolean) || [])]
+  const sectionIds = Array.from(new Set(children?.map(c => c.section_id).filter(Boolean) || []))
   const childIds = children?.map(c => c.id) || []
 
   const { data: assignments } = sectionIds.length > 0
