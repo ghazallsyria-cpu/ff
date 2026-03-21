@@ -3,6 +3,15 @@ import { redirect } from 'next/navigation'
 import PageHeader from '@/components/shared/PageHeader'
 import { formatDateTime } from '@/lib/utils'
 
+type Attendance = {
+  id: string
+  student_id: string
+  date: string
+  status: 'present' | 'absent' | 'late'
+  subjects: { name: string }[]
+  students: { users: { full_name: string }[] }[]
+}
+
 export default async function ParentPage() {
   const supabase = await createClient()
 
@@ -17,69 +26,67 @@ export default async function ParentPage() {
     .select('id, section_id, users(full_name)')
     .eq('parent_id', user.id)
 
-  const sectionIds =
-    Array.from(
-      new Set(children?.map(c => c.section_id).filter(Boolean) || [])
-    )
+  const sectionIds = Array.from(
+    new Set(children?.map(c => c.section_id).filter(Boolean) || [])
+  )
 
-  const { data: attendances } =
-    sectionIds.length > 0
-      ? await supabase
-          .from('attendances')
-          .select(`
-            id,
-            student_id,
-            date,
-            status,
-            subjects(name),
-            students(users(full_name))
-          `)
-          .in('section_id', sectionIds)
-          .order('date', { ascending: false })
-      : { data: [] }
+  const { data: attendances } = (sectionIds.length > 0
+    ? await supabase
+        .from('attendances')
+        .select(`
+          id,
+          student_id,
+          date,
+          status,
+          subjects(name),
+          students(users(full_name))
+        `)
+        .in('section_id', sectionIds)
+        .order('date', { ascending: false })
+    : { data: [] }) as { data: Attendance[] }
 
   return (
     <div className="p-6">
       <PageHeader title="حضور الأبناء" subtitle="متابعة حضور وغياب الأبناء" />
 
-      {attendances?.length === 0 ? (
+      {!attendances || attendances.length === 0 ? (
         <p className="text-gray-400 text-sm text-center py-4">
           لا توجد سجلات
         </p>
       ) : (
         <div className="space-y-2">
-          {attendances?.slice(0, 6).map((a: any) => (
+          {attendances.slice(0, 6).map((item) => (
             <div
-              key={a.id}
+              key={item.id}
               className="flex items-center gap-3 p-2.5 mb-1.5 hover:bg-gray-50 rounded-xl"
             >
               <span
                 className={`px-2 py-0.5 rounded-lg text-xs font-semibold ${
-                  a.status === 'present'
+                  item.status === 'present'
                     ? 'bg-green-100 text-green-700'
-                    : a.status === 'absent'
+                    : item.status === 'absent'
                     ? 'bg-red-100 text-red-700'
                     : 'bg-yellow-100 text-yellow-700'
                 }`}
               >
-                {a.status === 'present'
+                {item.status === 'present'
                   ? 'حاضر'
-                  : a.status === 'absent'
+                  : item.status === 'absent'
                   ? 'غائب'
                   : 'متأخر'}
               </span>
 
               <div className="flex-1">
                 <p className="text-sm font-medium text-gray-800">
-                  {(a.students as any)?.users?.full_name}
+                  {item.students?.[0]?.users?.[0]?.full_name}
                 </p>
                 <p className="text-xs text-gray-400">
-                  {(a.subjects as any)?.name}
+                  {item.subjects?.[0]?.name}
                 </p>
               </div>
 
               <p className="text-xs text-gray-400">
-                {formatDateTime(a.date)}
+                {formatDateTime(item.date)}
               </p>
             </div>
           ))}
