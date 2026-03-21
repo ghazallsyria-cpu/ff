@@ -1,12 +1,16 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import PageHeader from '@/components/shared/PageHeader'
-import { FileText, Clock, CheckCircle } from 'lucide-react'
+import { FileText } from 'lucide-react'
 import { formatDateTime } from '@/lib/utils'
 
 export default async function ParentPage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
   if (!user) redirect('/login')
 
   const { data: children } = await supabase
@@ -14,46 +18,50 @@ export default async function ParentPage() {
     .select('id, section_id, users(full_name)')
     .eq('parent_id', user.id)
 
-  const sectionIds = Array.from(new Set(children?.map(c => c.section_id).filter(Boolean) || []))
-  const childIds = children?.map(c => c.id) || []
+  const sectionIds =
+    Array.from(
+      new Set(children?.map(c => c.section_id).filter(Boolean) || [])
+    )
 
-  const { data: attendances } = sectionIds.length > 0
-    ? await supabase
-        .from('attendances')
-        .select(`
-          id,
-          student_id,
-          date,
-          status,
-          subjects(name),
-          students(users(full_name))
-        `)
-        .in('section_id', sectionIds)
-        .order('date', { ascending: false })
-    : { data: [] }
-
-  const now = new Date()
+  const { data: attendances } =
+    sectionIds.length > 0
+      ? await supabase
+          .from('attendances')
+          .select(`
+            student_id,
+            date,
+            status,
+            subjects(name),
+            students(users(full_name))
+          `)
+          .in('section_id', sectionIds)
+          .order('date', { ascending: false })
+      : { data: [] }
 
   return (
     <div className="p-6">
       <PageHeader title="حضور الأبناء" subtitle="متابعة حضور وغياب الأبناء" />
 
       {attendances?.length === 0 ? (
-        <div className="bg-white rounded-2xl p-10 text-center text-gray-400 border">
-          <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p>لا توجد سجلات</p>
-        </div>
+        <p className="text-gray-400 text-sm text-center py-4">
+          لا توجد سجلات
+        </p>
       ) : (
         <div className="space-y-2">
-          {attendances?.slice(0, 6).map(a => (
-            <div key={`${a.student_id}-${a.date}`} className="flex items-center gap-3 p-2.5 mb-1.5 hover:bg-gray-50 rounded-xl">
-              <span className={`px-2 py-0.5 rounded-lg text-xs font-semibold ${
-                a.status === 'present'
-                  ? 'bg-green-100 text-green-700'
-                  : a.status === 'absent'
-                  ? 'bg-red-100 text-red-700'
-                  : 'bg-yellow-100 text-yellow-700'
-              }`}>
+          {attendances?.slice(0, 6).map((a: any) => (
+            <div
+              key={`${a.student_id}-${a.date}`}
+              className="flex items-center gap-3 p-2.5 mb-1.5 hover:bg-gray-50 rounded-xl"
+            >
+              <span
+                className={`px-2 py-0.5 rounded-lg text-xs font-semibold ${
+                  a.status === 'present'
+                    ? 'bg-green-100 text-green-700'
+                    : a.status === 'absent'
+                    ? 'bg-red-100 text-red-700'
+                    : 'bg-yellow-100 text-yellow-700'
+                }`}
+              >
                 {a.status === 'present'
                   ? 'حاضر'
                   : a.status === 'absent'
