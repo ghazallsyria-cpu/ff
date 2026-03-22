@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Eye, EyeOff, GraduationCap, Loader2, IdCard } from 'lucide-react'
+import { Eye, EyeOff, GraduationCap, Loader2, CreditCard } from 'lucide-react'
 
 const ROLE_REDIRECT: Record<string, string> = {
   admin:      '/dashboard',
@@ -61,7 +61,6 @@ export default function LoginPage() {
 
     // ── 4. توجيه حسب الحالة ─────────────────────────────────────
     if (profile.must_reset_password) {
-      // عرض صفحة خيار تغيير كلمة المرور
       router.push('/change-password')
       return
     }
@@ -109,7 +108,7 @@ export default function LoginPage() {
                   placeholder="أدخل رقمك المدني"
                   maxLength={16}
                 />
-                <IdCard className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <CreditCard className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               </div>
             </div>
 
