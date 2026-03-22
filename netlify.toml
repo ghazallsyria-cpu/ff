@@ -1,15 +1,9 @@
 [build]
-  command = "npm run build"
-  publish = ".next"
+command = "npm run build"
 
 [[plugins]]
-  package = "@netlify/plugin-nextjs"
+package = "@netlify/plugin-nextjs"
 
 [build.environment]
-  NODE_VERSION = "20"
-  NPM_FLAGS = "--legacy-peer-deps"
-
-[[redirects]]
-  from = "/*"
-  to = "/.netlify/functions/___netlify-handler"
-  status = 200
+NODE_VERSION = "20"
+NPM_FLAGS = "--legacy-peer-deps"
