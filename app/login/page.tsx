@@ -1,7 +1,6 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { Eye, EyeOff, GraduationCap, Loader2, CreditCard } from 'lucide-react'
 
 const ROLE_REDIRECT: Record<string, string> = {
@@ -26,80 +25,53 @@ export default function LoginPage() {
     setError('')
 
     const input = loginId.trim()
-    const supabase = createClient()
 
-    // ── المدير يدخل بالإيميل الكامل ──────────────────────────────
-    if (input.includes('@')) {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: input,
-        password,
+    try {
+      // استخدام API المخصص مباشرة للجميع
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 10000)
+
+      const res = await fetch('/api/auth-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nationalId: input, password }),
+        signal: controller.signal,
       })
-      if (authError || !data.user) {
-        setError('البريد الإلكتروني أو كلمة المرور غير صحيحة')
+
+      clearTimeout(timeout)
+
+      if (!res.ok) {
+        setError('الرقم المدني أو كلمة المرور غير صحيحة')
         setLoading(false)
         return
       }
-      const { data: profile } = await supabase
-        .from('users')
-        .select('role, must_reset_password')
-        .eq('id', data.user.id)
-        .maybeSingle()
-      if (profile?.must_reset_password) { router.push('/change-password'); return }
-      router.push(ROLE_REDIRECT[profile?.role ?? 'student'])
-      router.refresh()
-      return
-    }
 
-    // ── المعلمون والطلاب وأولياء الأمور ─────────────────────────
-    // أولاً: جرب الطريقة العادية
-    const email = `${input}@alrefaa.edu`
-    const { data: authData, error: authError } =
-      await supabase.auth.signInWithPassword({ email, password })
+      const result = await res.json()
 
-    if (!authError && authData.user) {
-      // نجحت الطريقة العادية
-      await new Promise(r => setTimeout(r, 400))
-      const { data: profile } = await supabase
-        .from('users')
-        .select('role, must_reset_password')
-        .eq('id', authData.user.id)
-        .maybeSingle()
-      if (profile?.must_reset_password) { router.push('/change-password'); return }
-      router.push(ROLE_REDIRECT[profile?.role ?? 'student'])
-      router.refresh()
-      return
-    }
+      if (!result.success) {
+        setError('الرقم المدني أو كلمة المرور غير صحيحة')
+        setLoading(false)
+        return
+      }
 
-    // ثانياً: جرب الـ API المخصص (للمستخدمين المنشأين بـ SQL)
-    const res = await fetch('/api/auth-login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nationalId: input, password }),
-    })
+      // حفظ بيانات المستخدم
+      sessionStorage.setItem('manual_user', JSON.stringify({
+        id:    result.user.id,
+        role:  result.user.role,
+        name:  result.user.name,
+        email: result.user.email,
+      }))
 
-    if (!res.ok) {
-      setError('الرقم المدني أو كلمة المرور غير صحيحة')
+      router.push(ROLE_REDIRECT[result.user.role] ?? '/dashboard')
+
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('انتهت مهلة الاتصال، حاول مجدداً')
+      } else {
+        setError('حدث خطأ، حاول مجدداً')
+      }
       setLoading(false)
-      return
     }
-
-    const result = await res.json()
-    if (!result.success) {
-      setError('الرقم المدني أو كلمة المرور غير صحيحة')
-      setLoading(false)
-      return
-    }
-
-    // حفظ بيانات المستخدم في sessionStorage مؤقتاً
-    sessionStorage.setItem('manual_user', JSON.stringify({
-      id:   result.user.id,
-      role: result.user.role,
-      name: result.user.name,
-      email: result.user.email,
-    }))
-
-    router.push(ROLE_REDIRECT[result.user.role] ?? '/dashboard')
-    router.refresh()
   }
 
   return (
