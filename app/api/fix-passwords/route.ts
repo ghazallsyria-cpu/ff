@@ -7,11 +7,7 @@ import { NextResponse } from 'next/server'
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const offset = parseInt(searchParams.get('offset') || '0')
-  const limit = 50
-
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return NextResponse.json({ error: 'Service Role Key مفقود' }, { status: 500 })
-  }
+  const limit = 20
 
   const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,24 +15,18 @@ export async function GET(request: Request) {
     { auth: { autoRefreshToken: false, persistSession: false } }
   )
 
-  // اختبار الصلاحيات أولاً
-  const { data: testUser, error: testError } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1 })
-  if (testError) {
-    return NextResponse.json({ 
-      error: 'فشل Admin API',
-      details: testError.message,
-      hint: 'تحقق من صحة SUPABASE_SERVICE_ROLE_KEY'
-    }, { status: 500 })
-  }
-
-  // جلب المستخدمين
+  // جلب المستخدمين من public.users مباشرة
   const { data: users, error: usersError } = await supabaseAdmin
     .from('users')
     .select('id, email, role')
     .in('role', ['teacher', 'student', 'parent'])
     .range(offset, offset + limit - 1)
 
-  if (usersError || !users || users.length === 0) {
+  if (usersError) {
+    return NextResponse.json({ error: usersError.message }, { status: 500 })
+  }
+
+  if (!users || users.length === 0) {
     return NextResponse.json({ message: '✅ اكتمل', done: true })
   }
 
@@ -46,10 +36,7 @@ export async function GET(request: Request) {
   for (const user of users) {
     const { error } = await supabaseAdmin.auth.admin.updateUserById(
       user.id,
-      { 
-        password: '123456',
-        email_confirm: true
-      }
+      { password: '123456', email_confirm: true }
     )
     if (error) {
       errors.push(`${user.email}: ${error.message}`)
@@ -63,9 +50,9 @@ export async function GET(request: Request) {
     processed: users.length,
     success,
     failed: users.length - success,
-    sample_error: errors[0] || null,
-    next: users.length === limit 
-      ? `/api/fix-passwords?offset=${offset + limit}` 
+    first_error: errors[0] || null,
+    next: users.length === limit
+      ? `/api/fix-passwords?offset=${offset + limit}`
       : null,
     done: users.length < limit
   })
