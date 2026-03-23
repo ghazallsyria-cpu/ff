@@ -9,23 +9,21 @@ export async function GET(request: Request) {
   const offset = parseInt(searchParams.get('offset') || '0')
   const limit = 20
 
-  const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
+  const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
-  // جلب المستخدمين من public.users مباشرة
-  const { data: users, error: usersError } = await supabaseAdmin
+  const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  })
+
+  // جلب المستخدمين
+  const { data: users, error } = await supabase
     .from('users')
     .select('id, email, role')
     .in('role', ['teacher', 'student', 'parent'])
     .range(offset, offset + limit - 1)
 
-  if (usersError) {
-    return NextResponse.json({ error: usersError.message }, { status: 500 })
-  }
-
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!users || users.length === 0) {
     return NextResponse.json({ message: '✅ اكتمل', done: true })
   }
@@ -34,14 +32,28 @@ export async function GET(request: Request) {
   const errors: string[] = []
 
   for (const user of users) {
-    const { error } = await supabaseAdmin.auth.admin.updateUserById(
-      user.id,
-      { password: '123456', email_confirm: true }
+    // استخدام REST API مباشرة بدلاً من Admin SDK
+    const res = await fetch(
+      `${SUPABASE_URL}/auth/v1/admin/users/${user.id}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SERVICE_KEY,
+          'Authorization': `Bearer ${SERVICE_KEY}`,
+        },
+        body: JSON.stringify({
+          password: '123456',
+          email_confirm: true,
+        }),
+      }
     )
-    if (error) {
-      errors.push(`${user.email}: ${error.message}`)
-    } else {
+
+    if (res.ok) {
       success++
+    } else {
+      const body = await res.json().catch(() => ({}))
+      errors.push(`${user.email}: ${body?.msg || body?.message || res.status}`)
     }
   }
 
@@ -54,6 +66,6 @@ export async function GET(request: Request) {
     next: users.length === limit
       ? `/api/fix-passwords?offset=${offset + limit}`
       : null,
-    done: users.length < limit
+    done: users.length < limit,
   })
 }
