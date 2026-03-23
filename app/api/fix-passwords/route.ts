@@ -7,7 +7,7 @@ import { NextResponse } from 'next/server'
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const offset = parseInt(searchParams.get('offset') || '0')
-  const limit = 20
+  const limit  = 10
 
   const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -16,10 +16,10 @@ export async function GET(request: Request) {
     auth: { autoRefreshToken: false, persistSession: false }
   })
 
-  // جلب المستخدمين
+  // جلب المستخدمين من public.users
   const { data: users, error } = await supabase
     .from('users')
-    .select('id, email, role')
+    .select('id, email, full_name, role')
     .in('role', ['teacher', 'student', 'parent'])
     .range(offset, offset + limit - 1)
 
@@ -32,28 +32,53 @@ export async function GET(request: Request) {
   const errors: string[] = []
 
   for (const user of users) {
-    // استخدام REST API مباشرة بدلاً من Admin SDK
-    const res = await fetch(
-      `${SUPABASE_URL}/auth/v1/admin/users/${user.id}`,
-      {
-        method: 'PUT',
+    try {
+      // 1. احذف المستخدم من auth.users
+      await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${user.id}`, {
+        method: 'DELETE',
+        headers: {
+          'apikey': SERVICE_KEY,
+          'Authorization': `Bearer ${SERVICE_KEY}`,
+        },
+      })
+
+      // 2. أعد إنشاءه بشكل صحيح عبر Admin API
+      const createRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'apikey': SERVICE_KEY,
           'Authorization': `Bearer ${SERVICE_KEY}`,
         },
         body: JSON.stringify({
+          email: user.email,
           password: '123456',
           email_confirm: true,
+          user_metadata: { full_name: user.full_name },
+          app_metadata:  { provider: 'email', providers: ['email'] },
         }),
-      }
-    )
+      })
 
-    if (res.ok) {
+      const created = await createRes.json()
+
+      if (!createRes.ok) {
+        errors.push(`${user.email}: ${created?.msg || created?.message || createRes.status}`)
+        continue
+      }
+
+      const newId = created.id
+
+      // 3. حدّث public.users بالـ ID الجديد
+      if (newId && newId !== user.id) {
+        await supabase
+          .from('users')
+          .update({ id: newId })
+          .eq('id', user.id)
+      }
+
       success++
-    } else {
-      const body = await res.json().catch(() => ({}))
-      errors.push(`${user.email}: ${body?.msg || body?.message || res.status}`)
+    } catch (e: unknown) {
+      errors.push(`${user.email}: ${e instanceof Error ? e.message : 'unknown'}`)
     }
   }
 
