@@ -19,58 +19,83 @@ export default function LoginPage() {
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
+  const [debug, setDebug]       = useState('')
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError('')
+    setDebug('')
 
     const input    = loginId.trim()
     const supabase = createClient()
 
-    // ── المدير: دخول بالإيميل الكامل ────────────────────────────
+    // ── المدير فقط بالإيميل ───────────────────────────────────
     if (input.includes('@')) {
       const { data, error: authError } =
         await supabase.auth.signInWithPassword({ email: input, password })
-
       if (authError || !data.user) {
-        setError('البريد الإلكتروني أو كلمة المرور غير صحيحة')
+        setError('البريد أو كلمة المرور غير صحيحة')
+        setLoading(false)
+        return
+      }
+      const { data: profile } = await supabase
+        .from('users').select('role').eq('id', data.user.id).maybeSingle()
+      router.push(ROLE_REDIRECT[profile?.role ?? 'student'])
+      return
+    }
+
+    // ── الجميع: RPC مع timeout 8 ثوان ────────────────────────
+    setDebug('جاري الاتصال بالخادم...')
+
+    const rpcPromise = supabase.rpc('verify_password', {
+      p_national_id: input,
+      p_password:    password,
+    })
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('timeout')), 8000)
+    )
+
+    try {
+      const { data: verified, error: rpcError } =
+        await Promise.race([rpcPromise, timeoutPromise]) as Awaited<typeof rpcPromise>
+
+      if (rpcError) {
+        setError(`خطأ: ${rpcError.message}`)
+        setDebug('')
         setLoading(false)
         return
       }
 
-      const { data: profile } = await supabase
-        .from('users').select('role').eq('id', data.user.id).maybeSingle()
+      if (!verified || verified.length === 0) {
+        setError('الرقم المدني أو كلمة المرور غير صحيحة')
+        setDebug('')
+        setLoading(false)
+        return
+      }
 
-      router.push(ROLE_REDIRECT[profile?.role ?? 'student'])
-      router.refresh()
-      return
-    }
+      const user = verified[0]
+      setDebug(`✓ تم التحقق — ${user.user_role}`)
 
-    // ── الجميع: التحقق عبر دالة verify_password ─────────────────
-    const { data: verified, error: rpcError } = await supabase.rpc(
-      'verify_password',
-      { p_national_id: input, p_password: password }
-    )
+      sessionStorage.setItem('auth_user', JSON.stringify({
+        id:    user.user_id,
+        email: user.user_email,
+        role:  user.user_role,
+        name:  user.user_name,
+      }))
 
-    if (rpcError || !verified || verified.length === 0) {
-      setError('الرقم المدني أو كلمة المرور غير صحيحة')
+      router.push(ROLE_REDIRECT[user.user_role] ?? '/dashboard')
+
+    } catch (err) {
+      if (err instanceof Error && err.message === 'timeout') {
+        setError('انتهت مهلة الاتصال — تحقق من الإنترنت وحاول مجدداً')
+      } else {
+        setError(`خطأ غير متوقع: ${err instanceof Error ? err.message : 'unknown'}`)
+      }
+      setDebug('')
       setLoading(false)
-      return
     }
-
-    const user = verified[0]
-
-    // حفظ بيانات الجلسة يدوياً
-    sessionStorage.setItem('auth_user', JSON.stringify({
-      id:    user.user_id,
-      email: user.user_email,
-      role:  user.user_role,
-      name:  user.user_name,
-    }))
-
-    // توجيه للداشبورد حسب الدور
-    router.push(ROLE_REDIRECT[user.user_role] ?? '/dashboard')
   }
 
   return (
@@ -123,6 +148,12 @@ export default function LoginPage() {
                 </button>
               </div>
             </div>
+
+            {debug && (
+              <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-xl px-4 py-2 text-xs text-center">
+                {debug}
+              </div>
+            )}
 
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm text-center">
