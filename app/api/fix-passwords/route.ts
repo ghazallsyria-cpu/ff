@@ -1,8 +1,7 @@
+export const dynamic = 'force-dynamic'
+
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-
-// هذا الـ route يستخدم Service Role Key لتحديث كلمات المرور
-// شغّله مرة واحدة فقط ثم احذفه
 
 export async function GET() {
   const supabaseAdmin = createClient(
@@ -11,7 +10,6 @@ export async function GET() {
     { auth: { autoRefreshToken: false, persistSession: false } }
   )
 
-  // جلب كل المستخدمين من public.users
   const { data: users, error: usersError } = await supabaseAdmin
     .from('users')
     .select('id, email, role')
@@ -25,13 +23,11 @@ export async function GET() {
   let failed = 0
   const errors: string[] = []
 
-  // تحديث كلمة المرور لكل مستخدم عبر Admin API
   for (const user of users || []) {
     const { error } = await supabaseAdmin.auth.admin.updateUserById(
       user.id,
       { password: '123456' }
     )
-
     if (error) {
       failed++
       errors.push(`${user.email}: ${error.message}`)
@@ -45,6 +41,6 @@ export async function GET() {
     total: users?.length,
     success,
     failed,
-    errors: errors.slice(0, 10), // أول 10 أخطاء فقط
+    errors: errors.slice(0, 10),
   })
 }
