@@ -14,11 +14,11 @@ const ROLE_REDIRECT: Record<string, string> = {
 
 export default function LoginPage() {
   const router = useRouter()
-  const [nationalId, setNationalId] = useState('')
-  const [password, setPassword]     = useState('')
-  const [showPass, setShowPass]     = useState(false)
-  const [loading, setLoading]       = useState(false)
-  const [error, setError]           = useState('')
+  const [loginId, setLoginId]   = useState('')
+  const [password, setPassword] = useState('')
+  const [showPass, setShowPass] = useState(false)
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState('')
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -26,22 +26,41 @@ export default function LoginPage() {
     setError('')
 
     const supabase = createClient()
-    const email = `${nationalId.trim()}@alrefaa.edu`
+    const input = loginId.trim()
 
-    // ── 1. تسجيل الدخول بالرقم المدني ──────────────────────────
-    const { data: authData, error: authError } =
-      await supabase.auth.signInWithPassword({ email, password })
+    // ── بناء قائمة الإيميلات المحتملة للمحاولة ──────────────────
+    // 1. إذا كان المدخل يحتوي @ → استخدمه مباشرة (للمدير)
+    // 2. إذا كان رقماً → جرب nationalid@alrefaa.edu
+    // 3. جرب input@alrefaa.edu كاحتياط
+    const emailsToTry: string[] = []
 
-    if (authError || !authData.user) {
+    if (input.includes('@')) {
+      emailsToTry.push(input)
+    } else {
+      emailsToTry.push(`${input}@alrefaa.edu`)
+    }
+
+    let authData = null
+
+    for (const email of emailsToTry) {
+      const { data, error: authError } =
+        await supabase.auth.signInWithPassword({ email, password })
+      if (!authError && data.user) {
+        authData = data
+        break
+      }
+    }
+
+    if (!authData) {
       setError('الرقم المدني أو كلمة المرور غير صحيحة')
       setLoading(false)
       return
     }
 
-    // ── 2. انتظر اكتمال الـ session ─────────────────────────────
+    // ── انتظر اكتمال الـ session ─────────────────────────────────
     await new Promise(r => setTimeout(r, 500))
 
-    // ── 3. اقرأ الملف الشخصي مع إعادة المحاولة ──────────────────
+    // ── اقرأ الملف الشخصي مع إعادة المحاولة ──────────────────────
     let profile: { role: string; must_reset_password: boolean } | null = null
     for (let i = 0; i < 4; i++) {
       const { data } = await supabase
@@ -59,7 +78,7 @@ export default function LoginPage() {
       return
     }
 
-    // ── 4. توجيه حسب الحالة ─────────────────────────────────────
+    // ── توجيه حسب الحالة ─────────────────────────────────────────
     if (profile.must_reset_password) {
       router.push('/change-password')
       return
@@ -100,13 +119,13 @@ export default function LoginPage() {
                 <input
                   type="text"
                   inputMode="numeric"
-                  value={nationalId}
-                  onChange={e => setNationalId(e.target.value.replace(/\D/g, ''))}
+                  value={loginId}
+                  onChange={e => setLoginId(e.target.value)}
                   required
                   autoComplete="username"
                   className="w-full border border-gray-300 rounded-xl px-4 py-3 pr-11 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent tracking-widest text-lg"
                   placeholder="أدخل رقمك المدني"
-                  maxLength={16}
+                  maxLength={50}
                 />
                 <CreditCard className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               </div>
@@ -147,7 +166,7 @@ export default function LoginPage() {
             {/* زر الدخول */}
             <button
               type="submit"
-              disabled={loading || nationalId.length < 6}
+              disabled={loading || loginId.length < 3}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
             >
               {loading
