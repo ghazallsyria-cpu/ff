@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import { Eye, EyeOff, GraduationCap, Loader2, CreditCard } from 'lucide-react'
 
 const ROLE_REDIRECT: Record<string, string> = {
@@ -24,54 +25,52 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
 
-    const input = loginId.trim()
+    const input    = loginId.trim()
+    const supabase = createClient()
 
-    try {
-      // استخدام API المخصص مباشرة للجميع
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 10000)
+    // ── المدير: دخول بالإيميل الكامل ────────────────────────────
+    if (input.includes('@')) {
+      const { data, error: authError } =
+        await supabase.auth.signInWithPassword({ email: input, password })
 
-      const res = await fetch('/api/auth-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nationalId: input, password }),
-        signal: controller.signal,
-      })
-
-      clearTimeout(timeout)
-
-      if (!res.ok) {
-        setError('الرقم المدني أو كلمة المرور غير صحيحة')
+      if (authError || !data.user) {
+        setError('البريد الإلكتروني أو كلمة المرور غير صحيحة')
         setLoading(false)
         return
       }
 
-      const result = await res.json()
+      const { data: profile } = await supabase
+        .from('users').select('role').eq('id', data.user.id).maybeSingle()
 
-      if (!result.success) {
-        setError('الرقم المدني أو كلمة المرور غير صحيحة')
-        setLoading(false)
-        return
-      }
-
-      // حفظ بيانات المستخدم
-      sessionStorage.setItem('manual_user', JSON.stringify({
-        id:    result.user.id,
-        role:  result.user.role,
-        name:  result.user.name,
-        email: result.user.email,
-      }))
-
-      router.push(ROLE_REDIRECT[result.user.role] ?? '/dashboard')
-
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        setError('انتهت مهلة الاتصال، حاول مجدداً')
-      } else {
-        setError('حدث خطأ، حاول مجدداً')
-      }
-      setLoading(false)
+      router.push(ROLE_REDIRECT[profile?.role ?? 'student'])
+      router.refresh()
+      return
     }
+
+    // ── الجميع: التحقق عبر دالة verify_password ─────────────────
+    const { data: verified, error: rpcError } = await supabase.rpc(
+      'verify_password',
+      { p_national_id: input, p_password: password }
+    )
+
+    if (rpcError || !verified || verified.length === 0) {
+      setError('الرقم المدني أو كلمة المرور غير صحيحة')
+      setLoading(false)
+      return
+    }
+
+    const user = verified[0]
+
+    // حفظ بيانات الجلسة يدوياً
+    sessionStorage.setItem('auth_user', JSON.stringify({
+      id:    user.user_id,
+      email: user.user_email,
+      role:  user.user_role,
+      name:  user.user_name,
+    }))
+
+    // توجيه للداشبورد حسب الدور
+    router.push(ROLE_REDIRECT[user.user_role] ?? '/dashboard')
   }
 
   return (
@@ -99,7 +98,6 @@ export default function LoginPage() {
                   value={loginId}
                   onChange={e => setLoginId(e.target.value)}
                   required
-                  autoComplete="username"
                   className="w-full border border-gray-300 rounded-xl px-4 py-3 pr-11 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 tracking-widest text-lg"
                   placeholder="أدخل رقمك المدني"
                   maxLength={50}
@@ -116,7 +114,6 @@ export default function LoginPage() {
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   required
-                  autoComplete="current-password"
                   className="w-full border border-gray-300 rounded-xl px-4 py-3 pl-11 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="كلمة المرور الافتراضية: 123456"
                 />
@@ -135,13 +132,16 @@ export default function LoginPage() {
 
             <button type="submit" disabled={loading || loginId.length < 3}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
-              {loading ? <><Loader2 className="w-5 h-5 animate-spin" />جاري الدخول...</> : 'دخول'}
+              {loading
+                ? <><Loader2 className="w-5 h-5 animate-spin" />جاري الدخول...</>
+                : 'دخول'}
             </button>
           </form>
 
           <div className="mt-6 bg-blue-50 rounded-xl px-4 py-3">
             <p className="text-xs text-blue-700 text-center">
-              كلمة المرور الافتراضية للجميع: <span className="font-bold tracking-widest">123456</span>
+              كلمة المرور الافتراضية للجميع:{' '}
+              <span className="font-bold tracking-widest">123456</span>
             </p>
           </div>
           <div className="mt-4 pt-4 border-t border-gray-100 text-center">
